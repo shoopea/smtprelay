@@ -206,8 +206,6 @@ func mailHandler(peer smtpd.Peer, env smtpd.Envelope) error {
 		remotes[i], remotes[j] = remotes[j], remotes[i] // Swap elements at index i and j
 	}
 
-	logger.Infof("trying %d remotes", len(remotes))
-
 	var err error
 	for _, remote := range remotes {
 		logger = logger.WithField("host", remote.Addr)
