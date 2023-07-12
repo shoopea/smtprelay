@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/textproto"
 	"os"
@@ -183,7 +184,7 @@ func mailHandler(peer smtpd.Peer, env smtpd.Envelope) error {
 		environ = append(environ, fmt.Sprintf("%s=%s", "SMTPRELAY_PEER", peerIP))
 
 		cmd := exec.Cmd{
-			Env: environ,
+			Env:  environ,
 			Path: *command,
 		}
 
@@ -200,38 +201,52 @@ func mailHandler(peer smtpd.Peer, env smtpd.Envelope) error {
 		cmdLogger.Info("pipe command successful: " + stdout.String())
 	}
 
+	for i := len(remotes) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)                           // Generate a random index from 0 to i (inclusive)
+		remotes[i], remotes[j] = remotes[j], remotes[i] // Swap elements at index i and j
+	}
+
+	logger.Infof("trying %d remotes", len(remotes))
+
+	var err error
 	for _, remote := range remotes {
 		logger = logger.WithField("host", remote.Addr)
 		logger.Info("delivering mail from peer using smarthost")
 
-		err := SendMail(
+		err = SendMail(
 			remote,
 			env.Sender,
 			env.Recipients,
 			env.Data,
 		)
-		if err != nil {
-			var smtpError smtpd.Error
-
+		if err == nil {
+			logger.Debug("delivery successful")
+			break
+		} else {
 			switch err := err.(type) {
 			case *textproto.Error:
-				smtpError = smtpd.Error{Code: err.Code, Message: err.Msg}
-
 				logger.WithFields(logrus.Fields{
 					"err_code": err.Code,
 					"err_msg":  err.Msg,
 				}).Error("delivery failed")
 			default:
-				smtpError = smtpd.Error{Code: 554, Message: "Forwarding failed"}
-
 				logger.WithError(err).
 					Error("delivery failed")
 			}
+		}
+	}
 
-			return smtpError
+	if err != nil {
+		var smtpError smtpd.Error
+
+		switch err := err.(type) {
+		case *textproto.Error:
+			smtpError = smtpd.Error{Code: err.Code, Message: err.Msg}
+		default:
+			smtpError = smtpd.Error{Code: 554, Message: "Forwarding failed"}
 		}
 
-		logger.Debug("delivery successful")
+		return smtpError
 	}
 
 	return nil
