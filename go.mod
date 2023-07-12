@@ -1,4 +1,4 @@
-module github.com/decke/smtprelay
+module github.com/shoopea/smtprelay
 
 require (
 	github.com/chrj/smtpd v0.3.1
